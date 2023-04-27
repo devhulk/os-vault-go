@@ -13,6 +13,13 @@ import (
 	_ "github.com/lib/pq"
 )
 
+//type payment struct {
+//Name           string `json:"name"`
+//BillingAddress string `json:"billing_address"`
+//ID             string `json:"id,omitempty"`
+//Status         string `json:"status,omitempty"`
+//}
+
 func main() {
 	vaultAddr := os.Getenv("VAULT_ADDR")
 	vaultRoleID := os.Getenv("VAULT_ROLE_ID")
