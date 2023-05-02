@@ -1,2 +1,4 @@
 pgdata
 workshop-vault-for-developers
+payments-app/scripts
+docker-compose/vault-agent
