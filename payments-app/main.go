@@ -24,12 +24,10 @@ type Payment struct {
 
 func main() {
 	vaultAddr := os.Getenv("VAULT_ADDR")
-	vaultRoleID := os.Getenv("VAULT_ROLE_ID")
-	vaultSecretID := os.Getenv("VAULT_SECRET_ID")
 	vaultDBRole := os.Getenv("VAULT_DB_ROLE")
 
-	if vaultAddr == "" || vaultRoleID == "" || vaultSecretID == "" || vaultDBRole == "" {
-		log.Fatalf("Environment variables VAULT_ADDR, VAULT_ROLE_ID, VAULT_SECRET_ID, and VAULT_DB_ROLE must be set.")
+	if vaultAddr == "" || vaultDBRole == "" {
+		log.Fatalf("Environment variables VAULT_ADDR, VAULT_ROLE_ID, VAULT_DB_ROLE must be set.")
 	}
 
 	// Initialize the Vault client
@@ -42,22 +40,33 @@ func main() {
 		log.Fatalf("Failed to create Vault client: %s", err)
 	}
 
-	// Authenticate with Vault using AppRole
-	vaultToken, err := authenticateAppRole(vaultClient, vaultRoleID, vaultSecretID)
+	// Auth using client-token from Vault Agent
+	vaultToken, err := os.ReadFile("./agent/client-token")
 	if err != nil {
 		log.Fatalf("Failed to authenticate via APP ROLE with Vault: %s", err)
 	}
 
-	fmt.Println(vaultToken)
-	vaultClient.SetToken(vaultToken)
+	vaultClient.SetToken(string(vaultToken))
 
-	// Fetch credentials from Vault
+	// Fetch credentials from Vault using role and Vault Agent provided token
 	creds, err := getDatabaseCredentials(vaultClient, vaultDBRole)
 	if err != nil {
 		log.Fatalf("Failed to get database credentials: %s", err)
 	}
 
-	fmt.Println(creds)
+	// Connect to the PostgreSQL database using the fetched credentials
+	db, err := sql.Open("postgres", fmt.Sprintf("user=%s password=%s dbname=%s host=localhost sslmode=disable", creds["username"], creds["password"], "payments"))
+	if err != nil {
+		log.Fatalf("Failed to connect to the database: %s", err)
+	}
+
+	defer db.Close()
+
+	// Check database connection
+	err = db.Ping()
+	if err != nil {
+		log.Fatalf("Failed to ping the database: %s", err)
+	}
 
 	r := gin.Default()
 
@@ -74,21 +83,6 @@ func main() {
 	r.POST("/payments", func(ctx *gin.Context) {
 
 	})
-
-	// Connect to the PostgreSQL database using the fetched credentials
-	db, err := sql.Open("postgres", fmt.Sprintf("user=%s password=%s dbname=%s host=localhost sslmode=disable", creds["username"], creds["password"], "payments"))
-	if err != nil {
-		log.Fatalf("Failed to connect to the database: %s", err)
-	}
-	defer db.Close()
-
-	// Check database connection
-	err = db.Ping()
-	if err != nil {
-		log.Fatalf("Failed to ping the database: %s", err)
-	}
-
-	fmt.Println("Connected to the PostgreSQL database using Vault-generated credentials!")
 
 	srv := &http.Server{
 		Addr:    ":8081",

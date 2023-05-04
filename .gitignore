@@ -2,3 +2,6 @@ pgdata
 workshop-vault-for-developers
 payments-app/scripts
 docker-compose/vault-agent
+client-token 
+role_id_payments 
+secret_id_payments

@@ -1,0 +1,4 @@
+{{ with secret "payments/database/creds/payments-app" }}
+username: {{ .Data.data.username }}
+password: {{ .Data.data.password }}
+{{ end }}
