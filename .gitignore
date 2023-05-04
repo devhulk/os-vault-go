@@ -5,3 +5,4 @@ docker-compose/vault-agent
 client-token 
 role_id_payments 
 secret_id_payments
+os-vault
