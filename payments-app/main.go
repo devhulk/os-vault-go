@@ -1,8 +1,10 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
+	"encoding/base64"
 	"fmt"
 	"log"
 	"net/http"
@@ -104,6 +106,14 @@ func main() {
 			return
 		}
 
+		err := processPayment(p)
+		if err != nil {
+			ctx.JSON(400, gin.H{
+				"error": err,
+			})
+
+		}
+
 		status, err := insertPayment(db, p)
 
 		if err != nil {
@@ -197,10 +207,62 @@ func getPayments(db *sql.DB) ([]Payment, error) {
 
 }
 
+func basicAuth(username, password string) string {
+	auth := username + ":" + password
+	return base64.StdEncoding.EncodeToString([]byte(auth))
+}
+
+func processPayment(p Payment) error {
+	// TODO: Get username and password from vault for Payment Processor (kv2)
+
+	posturl := "http://localhost:8080/submit"
+
+	// value encryption**
+	bEncoded := base64.StdEncoding.EncodeToString([]byte(p.BillingAddress))
+
+	body := []byte(fmt.Sprintf(`{
+			"name": "%s",
+			"billing_address": "%s"
+			}
+	`, p.Name, bEncoded))
+
+	// Create a HTTP post request
+	r, e := http.NewRequest("POST", posturl, bytes.NewBuffer(body))
+	if e != nil {
+		return e
+	}
+
+	r.Header.Add("Content-Type", "application/json")
+	r.Header.Add("Authorization", "Basic "+basicAuth("", ""))
+
+	client := &http.Client{}
+	res, err1 := client.Do(r)
+	if err1 != nil {
+		return err1
+	}
+
+	defer res.Body.Close()
+
+	//b, errd := io.ReadAll(res.Body)
+	//if errd != nil {
+	//return errd
+	//}
+
+	//fmt.Println(string(b))
+
+	//fmt.Println(res.StatusCode)
+
+	if res.StatusCode != 201 {
+		panic(fmt.Sprintf("payment was not processed. Expected 201 and received %v", res.StatusCode))
+	}
+
+	return nil
+
+}
+
 func insertPayment(db *sql.DB, p Payment) (string, error) {
 
-	// Submit Payment to Payment Processor
-	// Get username and password from vault for Payment Processor (kv2)
+	// Start insert into app database
 
 	ctx := context.Background()
 
