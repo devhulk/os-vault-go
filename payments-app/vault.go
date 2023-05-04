@@ -7,6 +7,26 @@ import (
 	"github.com/hashicorp/vault/api"
 )
 
+// AuthenticateAppRole - used before implementing vault agent
+func AuthenticateAppRole(client *api.Client, roleID, secretID string) (string, error) {
+	// Authenticate using the role_id and secret_id
+	data := map[string]interface{}{
+		"role_id":   roleID,
+		"secret_id": secretID,
+	}
+
+	secret, err := client.Logical().Write("auth/approle/login", data)
+	if err != nil {
+		return "", err
+	}
+	if secret == nil || secret.Auth == nil {
+		return "", fmt.Errorf("failed to authenticate with approle")
+	}
+
+	return secret.Auth.ClientToken, nil
+}
+
+// GetDatabaseCredentials - Used throughout to get postgres creds
 func GetDatabaseCredentials(client *api.Client, roleName string) (map[string]interface{}, error) {
 	// Generate a new set of credentials by reading from the Vault role
 	secret, err := client.Logical().Read(fmt.Sprintf("payments/database/creds/%s", roleName))

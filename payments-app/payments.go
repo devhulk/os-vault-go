@@ -8,8 +8,6 @@ import (
 	"fmt"
 	"net/http"
 	"time"
-
-	"github.com/hashicorp/vault/api"
 )
 
 type Payment struct {
@@ -124,24 +122,6 @@ func InsertPayment(db *sql.DB, p Payment) (string, error) {
 
 	// TODO : replace with payment processor status message
 	return "success", nil
-}
-
-func authenticateAppRole(client *api.Client, roleID, secretID string) (string, error) {
-	// Authenticate using the role_id and secret_id
-	data := map[string]interface{}{
-		"role_id":   roleID,
-		"secret_id": secretID,
-	}
-
-	secret, err := client.Logical().Write("auth/approle/login", data)
-	if err != nil {
-		return "", err
-	}
-	if secret == nil || secret.Auth == nil {
-		return "", fmt.Errorf("failed to authenticate with approle")
-	}
-
-	return secret.Auth.ClientToken, nil
 }
 
 func basicAuth(username, password string) string {
