@@ -233,6 +233,7 @@ func processPayment(p Payment) error {
 	}
 
 	r.Header.Add("Content-Type", "application/json")
+	// TODO: Add vault or env vars -> otherwise returns 401
 	r.Header.Add("Authorization", "Basic "+basicAuth("", ""))
 
 	client := &http.Client{}
