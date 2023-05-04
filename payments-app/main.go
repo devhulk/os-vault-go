@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"log"
@@ -11,15 +12,16 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/hashicorp/vault/api"
 	_ "github.com/lib/pq"
 )
 
 type Payment struct {
-	Name           string `json:"name"`
-	BillingAddress string `json:"billing_address"`
-	ID             string `json:"id,omitempty"`
-	Status         string `json:"status,omitempty"`
+	ID             string    `json:"id,omitempty"`
+	Name           string    `json:"name"`
+	BillingAddress string    `json:"billing_address"`
+	Status         time.Time `json:"status,omitempty"`
 }
 
 func main() {
@@ -27,7 +29,7 @@ func main() {
 	vaultDBRole := os.Getenv("VAULT_DB_ROLE")
 
 	if vaultAddr == "" || vaultDBRole == "" {
-		log.Fatalf("Environment variables VAULT_ADDR, VAULT_ROLE_ID, VAULT_DB_ROLE must be set.")
+		log.Fatalf("Environment variables VAULT_ADDR, VAULT_DB_ROLE must be set.")
 	}
 
 	// Initialize the Vault client
@@ -71,6 +73,17 @@ func main() {
 	r := gin.Default()
 
 	r.GET("/payments", func(ctx *gin.Context) {
+		p, err := getPayments(db)
+
+		fmt.Println(p)
+
+		if err != nil {
+			ctx.JSON(400, gin.H{
+				"error": "could not get records from database.",
+			})
+		}
+
+		ctx.JSON(200, p)
 
 	})
 
@@ -81,6 +94,28 @@ func main() {
 	})
 
 	r.POST("/payments", func(ctx *gin.Context) {
+
+		var p Payment
+
+		p.ID = uuid.New().String()
+		p.Status = time.Now()
+
+		if err := ctx.BindJSON(&p); err != nil {
+			return
+		}
+
+		status, err := insertPayment(db, p)
+
+		if err != nil {
+			fmt.Println(err)
+			ctx.JSON(400, gin.H{
+				"error": err,
+			})
+		}
+
+		ctx.JSON(200, gin.H{
+			"message": fmt.Sprintf("Payment Status: %s", status),
+		})
 
 	})
 
@@ -119,6 +154,65 @@ func main() {
 
 	// Keep the application running
 	select {}
+}
+
+func getPayments(db *sql.DB) ([]Payment, error) {
+	// Prepare the SQL query
+	query := "SELECT * FROM payments"
+	var payments []Payment
+
+	// Execute the query and get the results
+	rows, err := db.Query(query)
+	if err != nil {
+		// Handle error
+		fmt.Printf("ERROR: Could not execute query. \n %v", err)
+		return nil, err
+	}
+	defer rows.Close()
+
+	// Iterate over the results and print them out
+	for rows.Next() {
+		payment := Payment{}
+
+		err := rows.Scan(&payment.ID, &payment.Name, &payment.BillingAddress, &payment.Status)
+		if err != nil {
+			fmt.Printf("ERROR: Could not scan rows. \n %v", err)
+			return nil, err
+		}
+
+		fmt.Println("pre append", payments)
+
+		payments = append(payments, payment)
+
+		fmt.Printf("Payment ID: %s, Customer Name: %s, Billing Address: %s, Created At: %s \n", payment.ID, payment.Name, payment.BillingAddress, payment.Status)
+
+	}
+
+	if err := rows.Err(); err != nil {
+		fmt.Println("ERROR: Could not get rows.")
+		return nil, err
+	}
+
+	return payments, nil
+
+}
+
+func insertPayment(db *sql.DB, p Payment) (string, error) {
+
+	// Submit Payment to Payment Processor
+	// Get username and password from vault for Payment Processor (kv2)
+
+	ctx := context.Background()
+
+	_, err := db.ExecContext(ctx, `INSERT INTO payments (id, name, billing_address, created_at) VALUES ($1, $2, $3, $4)`,
+		p.ID, p.Name, p.BillingAddress, p.Status)
+
+	if err != nil {
+		return "", fmt.Errorf("failed to insert payment: %v", err)
+	}
+
+	// TODO : replace with payment processor status message
+	return "success", nil
 }
 
 func authenticateAppRole(client *api.Client, roleID, secretID string) (string, error) {
