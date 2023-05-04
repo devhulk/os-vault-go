@@ -1,10 +1,7 @@
 package main
 
 import (
-	"bytes"
-	"context"
 	"database/sql"
-	"encoding/base64"
 	"fmt"
 	"log"
 	"net/http"
@@ -18,13 +15,6 @@ import (
 	"github.com/hashicorp/vault/api"
 	_ "github.com/lib/pq"
 )
-
-type Payment struct {
-	ID             string    `json:"id,omitempty"`
-	Name           string    `json:"name"`
-	BillingAddress string    `json:"billing_address"`
-	Status         time.Time `json:"status,omitempty"`
-}
 
 func main() {
 	vaultAddr := os.Getenv("VAULT_ADDR")
@@ -53,7 +43,7 @@ func main() {
 	vaultClient.SetToken(string(vaultToken))
 
 	// Fetch credentials from Vault using role and Vault Agent provided token
-	creds, err := getDatabaseCredentials(vaultClient, vaultDBRole)
+	creds, err := GetDatabaseCredentials(vaultClient, vaultDBRole)
 	if err != nil {
 		log.Fatalf("Failed to get database credentials: %s", err)
 	}
@@ -75,7 +65,7 @@ func main() {
 	r := gin.Default()
 
 	r.GET("/payments", func(ctx *gin.Context) {
-		p, err := getPayments(db)
+		p, err := GetPayments(db)
 
 		fmt.Println(p)
 
@@ -106,7 +96,7 @@ func main() {
 			return
 		}
 
-		err := processPayment(p)
+		err := ProcessPayment(p)
 		if err != nil {
 			ctx.JSON(400, gin.H{
 				"error": err,
@@ -114,7 +104,7 @@ func main() {
 
 		}
 
-		status, err := insertPayment(db, p)
+		status, err := InsertPayment(db, p)
 
 		if err != nil {
 			fmt.Println(err)
@@ -164,159 +154,4 @@ func main() {
 
 	// Keep the application running
 	select {}
-}
-
-func getPayments(db *sql.DB) ([]Payment, error) {
-	// Prepare the SQL query
-	query := "SELECT * FROM payments"
-	var payments []Payment
-
-	// Execute the query and get the results
-	rows, err := db.Query(query)
-	if err != nil {
-		// Handle error
-		fmt.Printf("ERROR: Could not execute query. \n %v", err)
-		return nil, err
-	}
-	defer rows.Close()
-
-	// Iterate over the results and print them out
-	for rows.Next() {
-		payment := Payment{}
-
-		err := rows.Scan(&payment.ID, &payment.Name, &payment.BillingAddress, &payment.Status)
-		if err != nil {
-			fmt.Printf("ERROR: Could not scan rows. \n %v", err)
-			return nil, err
-		}
-
-		fmt.Println("pre append", payments)
-
-		payments = append(payments, payment)
-
-		fmt.Printf("Payment ID: %s, Customer Name: %s, Billing Address: %s, Created At: %s \n", payment.ID, payment.Name, payment.BillingAddress, payment.Status)
-
-	}
-
-	if err := rows.Err(); err != nil {
-		fmt.Println("ERROR: Could not get rows.")
-		return nil, err
-	}
-
-	return payments, nil
-
-}
-
-func basicAuth(username, password string) string {
-	auth := username + ":" + password
-	return base64.StdEncoding.EncodeToString([]byte(auth))
-}
-
-func processPayment(p Payment) error {
-	// TODO: Get username and password from vault for Payment Processor (kv2)
-
-	posturl := "http://localhost:8080/submit"
-
-	// value encryption**
-	bEncoded := base64.StdEncoding.EncodeToString([]byte(p.BillingAddress))
-
-	body := []byte(fmt.Sprintf(`{
-			"name": "%s",
-			"billing_address": "%s"
-			}
-	`, p.Name, bEncoded))
-
-	// Create a HTTP post request
-	r, e := http.NewRequest("POST", posturl, bytes.NewBuffer(body))
-	if e != nil {
-		return e
-	}
-
-	r.Header.Add("Content-Type", "application/json")
-	// TODO: Add vault or env vars -> otherwise returns 401
-	r.Header.Add("Authorization", "Basic "+basicAuth("", ""))
-
-	client := &http.Client{}
-	res, err1 := client.Do(r)
-	if err1 != nil {
-		return err1
-	}
-
-	defer res.Body.Close()
-
-	//b, errd := io.ReadAll(res.Body)
-	//if errd != nil {
-	//return errd
-	//}
-
-	//fmt.Println(string(b))
-
-	//fmt.Println(res.StatusCode)
-
-	if res.StatusCode != 201 {
-		panic(fmt.Sprintf("payment was not processed. Expected 201 and received %v", res.StatusCode))
-	}
-
-	return nil
-
-}
-
-func insertPayment(db *sql.DB, p Payment) (string, error) {
-
-	// Start insert into app database
-
-	ctx := context.Background()
-
-	_, err := db.ExecContext(ctx, `INSERT INTO payments (id, name, billing_address, created_at) VALUES ($1, $2, $3, $4)`,
-		p.ID, p.Name, p.BillingAddress, p.Status)
-
-	if err != nil {
-		return "", fmt.Errorf("failed to insert payment: %v", err)
-	}
-
-	// TODO : replace with payment processor status message
-	return "success", nil
-}
-
-func authenticateAppRole(client *api.Client, roleID, secretID string) (string, error) {
-	// Authenticate using the role_id and secret_id
-	data := map[string]interface{}{
-		"role_id":   roleID,
-		"secret_id": secretID,
-	}
-
-	secret, err := client.Logical().Write("auth/approle/login", data)
-	if err != nil {
-		return "", err
-	}
-	if secret == nil || secret.Auth == nil {
-		return "", fmt.Errorf("failed to authenticate with approle")
-	}
-
-	return secret.Auth.ClientToken, nil
-}
-
-func getDatabaseCredentials(client *api.Client, roleName string) (map[string]interface{}, error) {
-	// Generate a new set of credentials by reading from the Vault role
-	secret, err := client.Logical().Read(fmt.Sprintf("payments/database/creds/%s", roleName))
-
-	if err != nil {
-		return nil, err
-	}
-
-	if secret == nil {
-		return nil, fmt.Errorf("no credentials found for role %s", roleName)
-	}
-
-	// Extract the username and password from the secret
-	username := secret.Data["username"].(string)
-	password := secret.Data["password"].(string)
-	leaseDuration := time.Duration(secret.LeaseDuration) * time.Second
-
-	fmt.Printf("Generated credentials: username=%s, password=%s, lease_duration=%s\n", username, password, leaseDuration)
-
-	return map[string]interface{}{
-		"username": username,
-		"password": password,
-	}, nil
 }

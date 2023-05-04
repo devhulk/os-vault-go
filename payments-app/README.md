@@ -19,3 +19,17 @@ vault read payments/database/creds/payments-app
 2. Using App Role and the Go SDK
 3. Off loading token management to Vault Agent - Explain scenarios where you would use both.
 4. Deploy Using Vault Agent and k8s
+
+# Running the Project
+
+```
+go run *.go
+```
+
+or build and run **os-vault** binary 
+
+```
+go build
+./os-vault
+```
+
