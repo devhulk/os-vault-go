@@ -6,8 +6,11 @@ import (
 	"database/sql"
 	"encoding/base64"
 	"fmt"
+	"log"
 	"net/http"
 	"time"
+
+	"github.com/hashicorp/vault/api"
 )
 
 type Payment struct {
@@ -58,9 +61,7 @@ func GetPayments(db *sql.DB) ([]Payment, error) {
 
 }
 
-func ProcessPayment(p Payment) error {
-	// TODO: Get username and password from vault for Payment Processor (kv2)
-
+func ProcessPayment(vaultClient *api.Client, p Payment) error {
 	posturl := "http://localhost:8080/submit"
 
 	// value encryption**
@@ -78,9 +79,25 @@ func ProcessPayment(p Payment) error {
 		return e
 	}
 
+	// Fetch Payment Processor username and password
+	processorSecret, err := vaultClient.KVv2("payments/secrets").Get(context.Background(), "processor")
+	if err != nil {
+		log.Fatalf("unable to read secret: %v", err)
+	}
+
+	username, ok := processorSecret.Data["username"].(string)
+	if !ok {
+		log.Fatalf("value type assertion failed: %T %#v", processorSecret.Data["username"], processorSecret.Data["username"])
+	}
+
+	password, ok := processorSecret.Data["password"].(string)
+	if !ok {
+		log.Fatalf("value type assertion failed: %T %#v", processorSecret.Data["password"], processorSecret.Data["password"])
+	}
+
 	r.Header.Add("Content-Type", "application/json")
 	// TODO: Add vault or env vars -> otherwise returns 401
-	r.Header.Add("Authorization", "Basic "+basicAuth("", ""))
+	r.Header.Add("Authorization", "Basic "+basicAuth(fmt.Sprintf("%s", username), fmt.Sprintf("%s", password)))
 
 	client := &http.Client{}
 	res, err1 := client.Do(r)
@@ -89,15 +106,6 @@ func ProcessPayment(p Payment) error {
 	}
 
 	defer res.Body.Close()
-
-	//b, errd := io.ReadAll(res.Body)
-	//if errd != nil {
-	//return errd
-	//}
-
-	//fmt.Println(string(b))
-
-	//fmt.Println(res.StatusCode)
 
 	if res.StatusCode != 201 {
 		panic(fmt.Sprintf("payment was not processed. Expected 201 and received %v", res.StatusCode))

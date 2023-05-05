@@ -64,6 +64,22 @@ func main() {
 
 	r := gin.Default()
 
+	// Read new token file
+	r.GET("/refresh-token", func(ctx *gin.Context) {
+
+		vaultToken, err := os.ReadFile("./agent/client-token")
+		if err != nil {
+			log.Fatalf("Failed to read token file. Error: %s", err)
+		}
+
+		vaultClient.SetToken(string(vaultToken))
+
+		ctx.JSON(200, gin.H{
+			"message": "token successfully refreshed.",
+		})
+
+	})
+
 	r.GET("/payments", func(ctx *gin.Context) {
 		p, err := GetPayments(db)
 
@@ -96,7 +112,7 @@ func main() {
 			return
 		}
 
-		err := ProcessPayment(p)
+		err := ProcessPayment(vaultClient, p)
 		if err != nil {
 			ctx.JSON(400, gin.H{
 				"error": err,
