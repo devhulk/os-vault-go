@@ -38,6 +38,7 @@ services:
     environment:
       ADMIN_PASSWORD: "payments-admin-password"
 
+
 networks:
   vpcbr:
     driver: bridge

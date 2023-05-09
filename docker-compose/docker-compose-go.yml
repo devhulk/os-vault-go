@@ -1,0 +1,21 @@
+version: "3.3"
+services:
+
+  payments-app:
+    build: ../payments-app
+    image: payments-app
+    networks:
+      vpcbr:
+        ipv4_address: 10.5.0.5
+    ports:
+      - 8081:8081
+    volumes:
+      - ../payments-app/agent:/go:r
+    environment:
+      VAULT_ADDR: "http://10.5.0.2:8200"
+      VAULT_DB_ROLE: "payments-app"
+      POSTGRES_DB_URL: "payments-database"
+      VAULT_TOKEN_FILE: "./vault/secrets/token"
+networks:
+  vpcbr:
+    name: workshop-vault-for-developers_vpcbr

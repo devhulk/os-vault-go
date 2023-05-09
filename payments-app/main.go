@@ -19,6 +19,8 @@ import (
 func main() {
 	vaultAddr := os.Getenv("VAULT_ADDR")
 	vaultDBRole := os.Getenv("VAULT_DB_ROLE")
+	postgresDBURL := os.Getenv("POSTGRES_DB_URL")
+	clientTokenFile := os.Getenv("VAULT_TOKEN_FILE")
 
 	if vaultAddr == "" || vaultDBRole == "" {
 		log.Fatalf("Environment variables VAULT_ADDR, VAULT_DB_ROLE must be set.")
@@ -35,13 +37,15 @@ func main() {
 	}
 
 	// Auth using client-token from Vault Agent
-	vaultToken, err := os.ReadFile("./agent/client-token")
+	vaultToken, err := os.ReadFile(clientTokenFile)
 	if err != nil {
 		log.Fatalf("Failed to authenticate via APP ROLE with Vault: %s", err)
 	}
 
-	vaultClient.SetToken(string(vaultToken))
+	// TODO:
+	fmt.Println(string(vaultToken))
 
+	vaultClient.SetToken(string(vaultToken))
 	// Fetch credentials from Vault using role and Vault Agent provided token
 	creds, err := GetDatabaseCredentials(vaultClient, vaultDBRole)
 	if err != nil {
@@ -49,7 +53,7 @@ func main() {
 	}
 
 	// Connect to the PostgreSQL database using the fetched credentials
-	db, err := sql.Open("postgres", fmt.Sprintf("user=%s password=%s dbname=%s host=localhost sslmode=disable", creds["username"], creds["password"], "payments"))
+	db, err := sql.Open("postgres", fmt.Sprintf("user=%s password=%s dbname=%s host=%s sslmode=disable", creds["username"], creds["password"], "payments", postgresDBURL))
 	if err != nil {
 		log.Fatalf("Failed to connect to the database: %s", err)
 	}
@@ -64,10 +68,17 @@ func main() {
 
 	r := gin.Default()
 
+	r.GET("/health-check", func(ctx *gin.Context) {
+		ctx.JSON(200, gin.H{
+			"message": "service is up and healthy",
+		})
+
+	})
+
 	// Read new token file
 	r.GET("/refresh-token", func(ctx *gin.Context) {
 
-		vaultToken, err := os.ReadFile("./agent/client-token")
+		vaultToken, err := os.ReadFile(clientTokenFile)
 		if err != nil {
 			log.Fatalf("Failed to read token file. Error: %s", err)
 		}
@@ -81,6 +92,7 @@ func main() {
 	})
 
 	r.GET("/payments", func(ctx *gin.Context) {
+		fmt.Println("Creds for /payments", creds["username"], creds["password"])
 		p, err := GetPayments(db)
 
 		fmt.Println(p)

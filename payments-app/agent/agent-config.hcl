@@ -9,7 +9,7 @@ auto_auth {
 
   sink "file" {
     config = {
-      path = "./client-token"
+      path = "../vault/secrets/token"
     }
   }
 

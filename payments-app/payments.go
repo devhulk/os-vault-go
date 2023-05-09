@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/hashicorp/vault/api"
@@ -62,7 +63,9 @@ func GetPayments(db *sql.DB) ([]Payment, error) {
 }
 
 func ProcessPayment(vaultClient *api.Client, p Payment) error {
-	posturl := "http://localhost:8080/submit"
+	//posturl := fmt.Sprintf("http://%s/submit", os.Getenv("PAYMENT_PROCESSOR_URL"))
+	posturl := fmt.Sprintf("%s/submit", os.Getenv("PAYMENT_PROCESSOR_URL"))
+	fmt.Println(posturl)
 
 	// value encryption**
 	bEncoded := base64.StdEncoding.EncodeToString([]byte(p.BillingAddress))
@@ -96,7 +99,6 @@ func ProcessPayment(vaultClient *api.Client, p Payment) error {
 	}
 
 	r.Header.Add("Content-Type", "application/json")
-	// TODO: Add vault or env vars -> otherwise returns 401
 	r.Header.Add("Authorization", "Basic "+basicAuth(fmt.Sprintf("%s", username), fmt.Sprintf("%s", password)))
 
 	client := &http.Client{}
@@ -128,7 +130,6 @@ func InsertPayment(db *sql.DB, p Payment) (string, error) {
 		return "", fmt.Errorf("failed to insert payment: %v", err)
 	}
 
-	// TODO : replace with payment processor status message
 	return "success", nil
 }
 

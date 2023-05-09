@@ -28,6 +28,7 @@ func AuthenticateAppRole(client *api.Client, roleID, secretID string) (string, e
 
 // GetDatabaseCredentials - Used throughout to get postgres creds
 func GetDatabaseCredentials(client *api.Client, roleName string) (map[string]interface{}, error) {
+
 	// Generate a new set of credentials by reading from the Vault role
 	secret, err := client.Logical().Read(fmt.Sprintf("payments/database/creds/%s", roleName))
 

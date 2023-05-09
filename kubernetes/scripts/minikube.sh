@@ -1,0 +1,9 @@
+#!/bin/bash
+
+set -e -o pipefail
+
+minikube start --driver=docker
+
+eval $(minikube -p minikube docker-env)
+cd ../payments-database && docker build -t payments-database .
+cd ../payments-processor && docker build -t payments-processor .
