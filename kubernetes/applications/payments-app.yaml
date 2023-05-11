@@ -53,6 +53,8 @@ spec:
           password={{ .Data.data.password }}
           url=http://payments-processor:8080
           {{- end }}
+        vault.hashicorp.com/agent-inject-command-processor.properties: |
+          wget -qO- --header='Content-Type:application/json' --post-data='{}' http://127.0.0.1:8081/reload
 
         vault.hashicorp.com/agent-inject-secret-database.properties: "payments/database/creds/payments-app"
         vault.hashicorp.com/agent-inject-template-database.properties: |
@@ -61,6 +63,8 @@ spec:
           password={{ .Data.password }}
           url=jdbc:postgresql://payments-database:5432/payments
           {{- end }}
+        vault.hashicorp.com/agent-inject-command-database.properties: |
+          wget -qO- --header='Content-Type:application/json' --post-data='{}' http://127.0.0.1:8081/reload
     spec:
       serviceAccountName: payments-app
       containers:
@@ -79,4 +83,4 @@ spec:
             - name: POSTGRES_DB_URL
               value: payments-database
             - name: PAYMENT_PROCESSOR_URL
-              value: payments-processor
+              value: http://payments-processor:8080

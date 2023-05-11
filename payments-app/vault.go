@@ -45,7 +45,9 @@ func GetDatabaseCredentials(client *api.Client, roleName string) (map[string]int
 	password := secret.Data["password"].(string)
 	leaseDuration := time.Duration(secret.LeaseDuration) * time.Second
 
-	fmt.Printf("Generated credentials: username=%s, password=%s, lease_duration=%s\n", username, password, leaseDuration)
+	fmt.Printf("Generated credentials Using SDK: username=%s, password=%s, lease_duration=%s\n", username, password, leaseDuration)
+
+	// TODO: Would need to add logic for live reload here
 
 	return map[string]interface{}{
 		"username": username,

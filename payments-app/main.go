@@ -1,14 +1,12 @@
 package main
 
 import (
-	"bufio"
 	"database/sql"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
-	"strings"
 	"syscall"
 	"time"
 
@@ -18,71 +16,10 @@ import (
 	_ "github.com/lib/pq"
 )
 
-// TODO: Handle refresh of credentials. Reload creds file.
-
-type Config struct {
-	ProcessorUsername *string
-	ProcessorPassword *string
-	DatabaseUsername  *string
-	DatabasePassword  *string
-	DB                *sql.DB
-}
-
-func scanDBConfig(file *os.File, config *Config) {
-
-	scanner := bufio.NewScanner(file)
-	// optionally, resize scanner's capacity for lines over 64K, see next example
-	for scanner.Scan() {
-		txt := scanner.Text()
-		//fmt.Println(scanner.Text())
-		if len(txt) > 0 {
-			split := strings.Split(txt, "=")
-			//fmt.Println("username: ", split)
-			switch value := split[0]; value {
-			case "username":
-				fmt.Println("username: ", split[1])
-				config.DatabaseUsername = &split[1]
-			case "password":
-				fmt.Println("password: ", split[1])
-				config.DatabasePassword = &split[1]
-			case "url":
-				fmt.Println("url: ", split[1])
-			}
-		}
-
-	}
-	if err := scanner.Err(); err != nil {
-		log.Fatal(err)
-	}
-}
-
-func scanProcessorConfig(file *os.File, config *Config) {
-
-	scanner := bufio.NewScanner(file)
-	// optionally, resize scanner's capacity for lines over 64K, see next example
-	for scanner.Scan() {
-		txt := scanner.Text()
-		//fmt.Println(scanner.Text())
-		if len(txt) > 0 {
-			split := strings.Split(txt, "=")
-			//fmt.Println("username: ", split)
-			switch value := split[0]; value {
-			case "username":
-				fmt.Println("username: ", split[1])
-				config.ProcessorUsername = &split[1]
-			case "password":
-				fmt.Println("password: ", split[1])
-				config.ProcessorPassword = &split[1]
-			case "url":
-				fmt.Println("url: ", split[1])
-			}
-		}
-
-	}
-	if err := scanner.Err(); err != nil {
-		log.Fatal(err)
-	}
-}
+// TODO: Better validation and logging.
+// TODO: GET :id
+// TODO: DELETE :id
+// TODO: PUT :id
 
 func main() {
 
@@ -94,9 +31,6 @@ func main() {
 	vaultDBRole := os.Getenv("VAULT_DB_ROLE")
 	postgresDBURL := os.Getenv("POSTGRES_DB_URL")
 	clientTokenFile := os.Getenv("VAULT_TOKEN_FILE")
-
-	//export DB_CONFIG_FILE="../../docker-compose/vault/secrets/database.properties"
-	//export PROCESSOR_CONFIG_FILE="../../docker-compose/vault/secrets/processor.properties"
 
 	if vaultAddr == "" || vaultDBRole == "" {
 		log.Fatalf("Environment variables VAULT_ADDR, VAULT_DB_ROLE must be set.")
@@ -118,18 +52,8 @@ func main() {
 		log.Fatalf("Failed to authenticate via APP ROLE with Vault: %s", err)
 	}
 
-	dbFile, err := os.ReadFile("/vault/secrets/database.properties")
-	if err != nil {
-		log.Fatalf("Failed to authenticate via APP ROLE with Vault: %s", err)
-	}
-
-	fmt.Println(string(dbFile))
-
-	// TODO:
-	fmt.Println(string(vaultToken))
-
 	vaultClient.SetToken(string(vaultToken))
-	// Fetch credentials from Vault using role and Vault Agent provided token
+	// This shows how to do it with the Vault SDK
 	creds, err := GetDatabaseCredentials(vaultClient, vaultDBRole)
 	if err != nil {
 		log.Fatalf("Failed to get database credentials: %s", err)
@@ -137,7 +61,6 @@ func main() {
 
 	connectionString := fmt.Sprintf("user=%s password=%s dbname=%s host=%s sslmode=disable", creds["username"], creds["password"], "payments", postgresDBURL)
 
-	fmt.Println(connectionString)
 	// Connect to the PostgreSQL database using the fetched credentials
 	db, err := sql.Open("postgres", connectionString)
 	if err != nil {
@@ -148,11 +71,11 @@ func main() {
 
 	defer db.Close()
 
-	// Check database connection
-	//err = db.Ping()
-	//if err != nil {
-	//log.Fatalf("Failed to ping the database: %s", err)
-	//}
+	//Check database connection
+	err = db.Ping()
+	if err != nil {
+		log.Fatalf("Failed to ping the database: %s", err)
+	}
 
 	r := gin.Default()
 
@@ -164,8 +87,13 @@ func main() {
 	})
 
 	// Read new token file
-	r.GET("/reload", func(ctx *gin.Context) {
+	r.POST("/reload", func(ctx *gin.Context) {
 
+		// Close old db connection
+		oldConn := *config.DB
+		oldConn.Close()
+
+		// Could have used the SDK to refresh credentials here but wanted to show the difference of loading file and vault-agent workflow.
 		//var dbUserName, dbPassword string
 		dbFile, err := os.Open("/vault/secrets/database.properties")
 		if err != nil {
@@ -174,11 +102,11 @@ func main() {
 
 		defer dbFile.Close()
 
-		scanDBConfig(dbFile, &config)
+		ScanDBConfig(dbFile, &config)
 
 		connectionString := fmt.Sprintf("user=%s password=%s dbname=%s host=%s sslmode=disable", *config.DatabaseUsername, *config.DatabasePassword, "payments", postgresDBURL)
 
-		fmt.Println(connectionString)
+		fmt.Println("Using Values from Vault Agent Template File: ", connectionString)
 		// Connect to the PostgreSQL database using the fetched credentials
 		db, err := sql.Open("postgres", connectionString)
 		if err != nil {
@@ -194,7 +122,7 @@ func main() {
 
 		defer processorFile.Close()
 
-		scanProcessorConfig(processorFile, &config)
+		ScanProcessorConfig(processorFile, &config)
 
 		vaultToken, err := os.ReadFile(clientTokenFile)
 		if err != nil {
@@ -202,16 +130,6 @@ func main() {
 		}
 
 		vaultClient.SetToken(string(vaultToken))
-
-		fmt.Println("This is the Global Config: ")
-		fmt.Println("u :", *config.DatabaseUsername)
-		fmt.Println("p :", *config.DatabasePassword)
-		fmt.Println("u :", *config.ProcessorUsername)
-		fmt.Println("p :", *config.ProcessorPassword)
-
-		//fmt.Println("Reloaded DB Config: ", string(dbFile))
-		//fmt.Println("Reloaded Processor Config: ", string(processorFile))
-		//fmt.Println("Reloaded Client Token: ", string(vaultToken))
 
 		ctx.JSON(200, gin.H{
 			"message": "token successfully refreshed.",
@@ -234,12 +152,6 @@ func main() {
 
 	})
 
-	r.GET("/payments/:id", func(ctx *gin.Context) {
-		id := ctx.Param("id")
-		fmt.Println(id)
-
-	})
-
 	r.POST("/payments", func(ctx *gin.Context) {
 
 		var p Payment
@@ -257,7 +169,7 @@ func main() {
 
 		}
 
-		status, err := InsertPayment(db, p)
+		status, err := InsertPayment(config.DB, p)
 		if err != nil {
 			log.Println("Processing Error: ", err)
 		}
