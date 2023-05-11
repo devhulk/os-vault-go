@@ -29,7 +29,7 @@ auto_auth {
     type = "file"
 
     config = {
-      path = "/vault-agent/.vault-token"
+      path = "/vault/secrets/token"
     }
   }
 }
@@ -42,12 +42,12 @@ auto_auth {
 // with Spring Boot (Java).
 template {
   source      = "/vault/templates/database.properties"
-  destination = "/vault-agent/config/database.properties"
+  destination = "/vault/secrets/database.properties"
 
   // When Vault agent renders a new template (because a secret changed), run
   // a command to refresh the Spring Boot application.
   exec {
-    command = ["wget -qO- --header='Content-Type:application/json' --post-data='{}' http://payments-app:8081/actuator/refresh"]
+    command = ["wget -qO- --header='Content-Type:application/json' --post-data='{}' http://payments-app:8081/reload"]
     timeout = "30s"
   }
 }
@@ -56,12 +56,12 @@ template {
 // with Spring Boot (Java).
 template {
   source      = "/vault/templates/processor.properties"
-  destination = "/vault-agent/config/processor.properties"
+  destination = "/vault/secrets/processor.properties"
 
   // When Vault agent renders a new template (because a secret changed), run
   // a command to refresh the Spring Boot application.
   exec {
-    command = ["wget -qO- --header='Content-Type:application/json' --post-data='{}' http://payments-app:8081/actuator/refresh"]
+    command = ["wget -qO- --header='Content-Type:application/json' --post-data='{}' http://payments-app:8081/reload"]
     timeout = "30s"
   }
 }

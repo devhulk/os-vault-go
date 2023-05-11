@@ -21,11 +21,12 @@ type Payment struct {
 	Status         time.Time `json:"status,omitempty"`
 }
 
-func GetPayments(db *sql.DB) ([]Payment, error) {
+func GetPayments(config *Config) ([]Payment, error) {
 	// Prepare the SQL query
 	query := "SELECT * FROM payments"
 	var payments []Payment
 
+	db := *config.DB
 	// Execute the query and get the results
 	rows, err := db.Query(query)
 	if err != nil {

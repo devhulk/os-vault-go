@@ -46,6 +46,21 @@ spec:
         vault.hashicorp.com/agent-inject: "true"
         vault.hashicorp.com/role: "payments-app"
         vault.hashicorp.com/agent-inject-token: "true"
+        vault.hashicorp.com/agent-inject-secret-processor.properties: "payments/secrets/data/processor"
+        vault.hashicorp.com/agent-inject-template-processor.properties: |
+          {{- with secret "payments/secrets/processor" }}
+          username={{ .Data.data.username }}
+          password={{ .Data.data.password }}
+          url=http://payments-processor:8080
+          {{- end }}
+
+        vault.hashicorp.com/agent-inject-secret-database.properties: "payments/database/creds/payments-app"
+        vault.hashicorp.com/agent-inject-template-database.properties: |
+          {{- with secret "payments/database/creds/payments-app" }}
+          username={{ .Data.username }}
+          password={{ .Data.password }}
+          url=jdbc:postgresql://payments-database:5432/payments
+          {{- end }}
     spec:
       serviceAccountName: payments-app
       containers:
